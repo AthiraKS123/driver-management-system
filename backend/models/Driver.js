@@ -1,0 +1,33 @@
+const mongoose = require("mongoose");
+
+const driverSchema = new mongoose.Schema(
+  {
+    name: { type: String, required: true },
+    city: { type: String, required: true },
+    phone: { type: String, required: true },
+    isDeleted: {
+      type: Boolean,
+      default: false,
+    },
+    deletedAt: {
+      type: Date,
+      default: null,
+    },
+    user: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+    },
+    profileImage: {
+      type: String,
+    },
+    imagePublicId: {
+  type: String,
+},
+  },
+  {
+    timestamps: true,
+  },
+);
+module.exports = mongoose.model("Driver", driverSchema);
+
+//This file defines the structure of driver data in MongoDB.
