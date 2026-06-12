@@ -97,7 +97,6 @@ exports.logout = async (req, res) => {
     }
 
     res.json({ message: "Logged out successfully" });
-
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -115,28 +114,36 @@ exports.getProfile = async (req, res) => {
 
 exports.refreshToken = async (req, res) => {
   try {
-    const { refreshToken } = req.body;
+    const { refreshToken } = req.body || {};
 
     if (!refreshToken) {
       return res.status(401).json({ message: "No token" });
     }
 
-    const decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET);
+    const incomingRefreshToken = String(refreshToken).trim();
+
+    // verify token signature and expiry
+    const decoded = jwt.verify(
+      incomingRefreshToken,
+      process.env.JWT_REFRESH_SECRET,
+    );
 
     const user = await User.findById(decoded.id);
 
-    if (!user || user.refreshToken !== refreshToken) {
-      return res.status(403).json({ message: "Invalid refresh token" });
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
     }
 
     const newAccessToken = generateAccessToken(user);
 
-    res.json({
+    return res.json({
       accessToken: newAccessToken,
     });
   } catch (err) {
-    res.status(403).json({
-      message: "Token expired",
+    console.log("REFRESH ERROR:", err.message);
+
+    return res.status(401).json({
+      message: "Token expired or invalid",
     });
   }
 };

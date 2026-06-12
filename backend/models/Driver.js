@@ -2,6 +2,10 @@ const mongoose = require("mongoose");
 
 const driverSchema = new mongoose.Schema(
   {
+     driverId: {
+      type: Number,
+      unique: true
+   },
     name: { type: String, required: true },
     city: { type: String, required: true },
     phone: { type: String, required: true },
@@ -13,6 +17,7 @@ const driverSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+    
     user: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
@@ -21,8 +26,23 @@ const driverSchema = new mongoose.Schema(
       type: String,
     },
     imagePublicId: {
-  type: String,
-},
+      type: String,
+    },
+    status: {
+      type: String,
+      enum: ["online", "offline", "idle"],
+      default: "offline",
+    },
+
+    lastSeen: {
+      type: Date,
+      default: Date.now,
+    },
+
+    socketId: {
+      type: String,
+      default: null,
+    },
   },
   {
     timestamps: true,

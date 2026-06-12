@@ -11,8 +11,10 @@ import { useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
 import { restoreDriver } from "../api/driverApi";
 import { useRef } from "react";
+import { useSocket } from "../context/SocketContext";
 
 const Drivers = () => {
+  const { socket, isConnected } = useSocket();
   const [drivers, setDrivers] = useState([]);
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
@@ -43,6 +45,104 @@ const Drivers = () => {
   const isFetching = useRef(false);
   const navigate = useNavigate();
 
+  // 🔌 Socket listeners
+  useEffect(() => {
+    if (!socket || !isConnected) return;
+
+    const handleNotification = (data) => {
+      console.log("🔔 NOTIFICATION:", data);
+      toast(data.message);
+    };
+
+    const handleAdd = (driver) => {
+      setDrivers((prev) => [driver, ...prev]);
+      loadStats();
+    };
+
+    const handleDelete = (driver) => {
+      setDrivers((prev) => prev.filter((d) => d._id !== driver._id));
+      loadStats();
+    };
+
+    const handleUpdate = (updatedDriver) => {
+      setDrivers((prev) =>
+        prev.map((d) => (d._id === updatedDriver._id ? updatedDriver : d)),
+      );
+      loadStats();
+    };
+
+    const handleRestore = (driver) => {
+      setDrivers((prev) => (page === 1 ? [driver, ...prev] : prev));
+      loadStats();
+    };
+
+    const handleStatus = ({ driverId, status }) => {
+      setDrivers((prev) =>
+        prev.map((driver) =>
+          driver._id === driverId ? { ...driver, status } : driver,
+        ),
+      );
+    };
+
+    socket.on("notification", handleNotification);
+    socket.on("driver-added", handleAdd);
+    socket.on("driver-deleted", handleDelete);
+    socket.on("driver-updated", handleUpdate);
+    socket.on("driver-restored", handleRestore);
+    socket.on("driver-status-changed", handleStatus);
+
+    return () => {
+      socket.off("notification", handleNotification);
+      socket.off("driver-added", handleAdd);
+      socket.off("driver-deleted", handleDelete);
+      socket.off("driver-updated", handleUpdate);
+      socket.off("driver-restored", handleRestore);
+      socket.off("driver-status-changed", handleStatus);
+    };
+  }, [socket, isConnected, page]);
+
+  /* =========================================
+   🟡 IDLE DETECTION
+========================================= */
+
+  useEffect(() => {
+    if (!socket || !isConnected || drivers.length === 0) return;
+
+    const currentDriverId = drivers[0]._id;
+
+    let idleTimer;
+
+    let isOnline = false;
+
+    const goOnline = () => {
+      if (!isOnline) {
+        socket.emit("driver-online", currentDriverId);
+        isOnline = true;
+      }
+
+      clearTimeout(idleTimer);
+
+      idleTimer = setTimeout(() => {
+        socket.emit("driver-idle", currentDriverId);
+        isOnline = false;
+      }, 30000);
+    };
+
+    window.addEventListener("mousemove", goOnline);
+    window.addEventListener("keydown", goOnline);
+    window.addEventListener("click", goOnline);
+
+    goOnline();
+
+    return () => {
+      clearTimeout(idleTimer);
+
+      window.removeEventListener("mousemove", goOnline);
+      window.removeEventListener("keydown", goOnline);
+      window.removeEventListener("click", goOnline);
+    };
+  }, [socket, isConnected, drivers.length]);
+
   const handleLogout = async () => {
     try {
       const refreshToken = localStorage.getItem("refreshToken");
@@ -54,7 +154,6 @@ const Drivers = () => {
       console.error("Logout error:", err);
     }
 
-    // clear tokens
     localStorage.removeItem("accessToken");
     localStorage.removeItem("refreshToken");
 
@@ -87,11 +186,6 @@ const Drivers = () => {
       if (sort) params.sort = sort;
 
       const res = await fetchDrivers(params);
-
-      // 🚫 If rate limited → do nothing (keep old UI)
-      // if (res?.data?.rateLimited) {
-      //   return;
-      // }
 
       if (!res || !res.data) return;
 
@@ -127,14 +221,8 @@ const Drivers = () => {
     loadStats();
   }, []);
 
-  // ❌ Delete
   const handleDelete = async (id) => {
     await deleteDriver(id);
-
-    setTimeout(() => {
-      loadDrivers();
-      loadStats();
-    }, 300);
 
     toast((t) => (
       <span>
@@ -143,8 +231,6 @@ const Drivers = () => {
           onClick={async () => {
             await restoreDriver(id);
             toast.dismiss(t.id);
-            loadDrivers();
-            loadStats();
           }}
           className="ml-3 bg-green-500 text-white px-2 py-1 rounded"
         >
@@ -163,7 +249,7 @@ const Drivers = () => {
       phone: driver.phone,
     });
 
-    setEditPreview(driver.profileImage); // 👈 show existing image
+    setEditPreview(driver.profileImage);
   };
 
   const handleUpdate = async (id) => {
@@ -183,9 +269,6 @@ const Drivers = () => {
       setEditingId(null);
       setEditImage(null);
       setEditPreview(null);
-
-      loadDrivers();
-      loadStats();
     } catch (err) {
       console.error(err);
     }
@@ -361,11 +444,31 @@ const Drivers = () => {
                       className="w-16 h-16 object-cover rounded-full mb-2"
                     />
                   )}
-                  <p className="text-lg font-semibold text-gray-800">
-                    {d.name}
-                  </p>
+                  <div className="flex items-center gap-2">
+  <p className="text-lg font-semibold text-gray-800">
+    #{d.driverId}
+  </p>
+
+  <p className="text-lg font-semibold text-gray-800">
+    {d.name}
+  </p>
+</div>
                   <p className="text-gray-600">{d.city}</p>
                   <p className="text-gray-500 text-sm">{d.phone}</p>
+                  <div className="mt-2">
+                    <span
+                      className={`px-3 py-1 rounded-full text-white text-xs font-semibold
+      ${
+        d.status === "online"
+          ? "bg-green-500"
+          : d.status === "idle"
+            ? "bg-yellow-500"
+            : "bg-red-500"
+      }`}
+                    >
+                      {d.status}
+                    </span>
+                  </div>
 
                   <div className="mt-4 flex gap-2">
                     <button
@@ -431,8 +534,6 @@ const Drivers = () => {
               <AddDriver
                 onSuccess={() => {
                   setPage(1);
-                  loadDrivers();
-                  loadStats();
                   setShowAddModal(false);
                 }}
               />

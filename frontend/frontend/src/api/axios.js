@@ -1,5 +1,4 @@
 import axios from "axios";
-import toast from "react-hot-toast";
 
 const API = axios.create({
   baseURL: "http://localhost:5000/api",
@@ -19,13 +18,20 @@ API.interceptors.request.use((config) => {
 });
 
 // =====================
-// REFRESH STATE
+// REFRESH CONTROL
 // =====================
 let isRefreshing = false;
 let queue = [];
 
-const processQueue = (token) => {
-  queue.forEach((cb) => cb(token));
+const processQueue = (error, token = null) => {
+  queue.forEach(({ resolve, reject }) => {
+    if (error) {
+      reject(error);
+      return;
+    }
+
+    resolve(token);
+  });
   queue = [];
 };
 
@@ -33,45 +39,41 @@ const processQueue = (token) => {
 // RESPONSE INTERCEPTOR
 // =====================
 API.interceptors.response.use(
-  (res) => res,
+  (response) => response,
 
   async (error) => {
-    const originalRequest = error.config;
+    const originalRequest = error.config || {};
 
-    if (!error.response) return Promise.reject(error);
-//    if (error.response.status === 429) {
-//   toast.error("Too many requests. Please slow down 🚫");
+    if (!error.response) {
+      console.log("❌ API ERROR:", error.message, originalRequest.url);
+      return Promise.reject(error);
+    }
 
-//   // ✅ IMPORTANT: DON'T reject
-//   return Promise.resolve({
-//     data: {
-//       drivers: null,
-//       totalPages: null,
-//       rateLimited: true,
-//     },
-//   });
-// }
-
-    // ❌ avoid refresh loop
-    if (originalRequest.url.includes("/auth/refresh")) {
+    // 🚫 Prevent infinite loop on refresh API itself
+    if (originalRequest.url?.includes("/auth/refresh")) {
       localStorage.clear();
       window.location.href = "/login";
       return Promise.reject(error);
     }
 
     // =====================
-    // HANDLE 401
+    // HANDLE 401 ONLY
     // =====================
     if (error.response.status === 401 && !originalRequest._retry) {
       originalRequest._retry = true;
 
-      // queue requests during refresh
+      // Queue requests while refreshing
       if (isRefreshing) {
-        return new Promise((resolve) => {
-          queue.push((token) => {
-            originalRequest.headers.Authorization = `Bearer ${token}`;
-            resolve(API(originalRequest));
-          });
+        return new Promise((resolve, reject) => {
+          queue.push({ resolve, reject });
+        }).then((token) => {
+          if (!token) {
+            return Promise.reject(error);
+          }
+
+          originalRequest.headers = originalRequest.headers || {};
+          originalRequest.headers.Authorization = `Bearer ${token}`;
+          return API(originalRequest);
         });
       }
 
@@ -80,23 +82,40 @@ API.interceptors.response.use(
       try {
         const refreshToken = localStorage.getItem("refreshToken");
 
+        if (!refreshToken) {
+          localStorage.clear();
+          window.location.href = "/login";
+          return Promise.reject(error);
+        }
+
         const res = await axios.post("http://localhost:5000/api/auth/refresh", {
           refreshToken,
         });
 
         const newToken = res.data.accessToken;
+        const newRefreshToken = res.data.refreshToken;
 
+        if (!newToken) {
+          throw new Error("No access token returned from refresh");
+        }
+
+        // 💾 store new access token
         localStorage.setItem("accessToken", newToken);
+        if (newRefreshToken) {
+          localStorage.setItem("refreshToken", newRefreshToken);
+        }
 
-        processQueue(newToken);
+        // process queued requests
+        processQueue(null, newToken);
 
-        // 🔥 IMPORTANT: set header
-        API.defaults.headers.common.Authorization = `Bearer ${newToken}`;
+        // update request header
+        originalRequest.headers = originalRequest.headers || {};
         originalRequest.headers.Authorization = `Bearer ${newToken}`;
 
-        // ✅ IMPORTANT FIX: use API, not axios
         return API(originalRequest);
       } catch (err) {
+        console.log("❌ REFRESH FAILED:", err.response?.status || err.message);
+        processQueue(err, null);
         localStorage.clear();
         window.location.href = "/login";
         return Promise.reject(err);
@@ -105,6 +124,7 @@ API.interceptors.response.use(
       }
     }
 
+    console.log("❌ API ERROR:", error.response.status, originalRequest.url);
     return Promise.reject(error);
   },
 );

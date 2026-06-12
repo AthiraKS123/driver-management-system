@@ -24,9 +24,10 @@ router.put(
 );
 
 router.delete("/:id", authMiddleware, driverController.deleteDriver);
+router.get("/trash", authMiddleware, driverController.getDeletedDrivers);
+
 router.get("/:id", authMiddleware, driverController.getDriverById);
 
-router.get("/trash", authMiddleware, driverController.getDeletedDrivers);
 
 router.put("/restore/:id", authMiddleware, driverController.restoreDriver);
 
