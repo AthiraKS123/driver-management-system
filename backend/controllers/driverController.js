@@ -11,36 +11,23 @@ const {
 const cloudinary = require("../config/cloudinary");
 
 exports.getDrivers = asyncHandler(async (req, res) => {
-  const cacheKey = `drivers:${req.user.id}:${JSON.stringify(req.query)}`;
-
-  // 🔍 Check Redis
-  // const cachedData = await getCache(cacheKey);
-
-  // if (cachedData) {
-  //   return res.json({
-  //     ...cachedData,
-  //     fromCache: true,
-  //   });
-  // }
-
-  // Redis disabled temporarily
-
-  // ❌ Fetch from DB
-  const result = await getDriversService(
-    req.query,
-    req.query.page,
-    req.query.sort,
-    req.user.id,
-  );
-
-  // 💾 Store in Redis (1 min)
-  // await setCache(cacheKey, result, 60);
-  // Redis disabled temporarily
-
-  res.json({
-    ...result,
-    fromCache: false,
-  });
+  console.log(">>> [GET /api/drivers] request from user:", req.user.id, "query:", req.query);
+  try {
+    const result = await getDriversService(
+      req.query,
+      req.query.page,
+      req.query.sort,
+      req.user.id,
+    );
+    console.log(">>> [GET /api/drivers] SUCCESS! Returning:", result.drivers.length, "drivers");
+    res.json({
+      ...result,
+      fromCache: false,
+    });
+  } catch (error) {
+    console.error(">>> [GET /api/drivers] ERROR:", error.message);
+    res.status(500).json({ error: error.message });
+  }
 });
 
 // ✅ ADD driver

@@ -63,11 +63,13 @@ io.on("connection", (socket) => {
       console.log("🟢 Driver online:", driverId);
 
       // update driver
-      await Driver.findByIdAndUpdate(driverId, {
+      const driver = await Driver.findByIdAndUpdate(driverId, {
         status: "online",
         socketId: socket.id,
         lastSeen: new Date(),
-      });
+      }, { new: true });
+
+      if (!driver) return;
 
       // save driverId inside socket
       socket.driverId = driverId;
@@ -80,7 +82,7 @@ io.on("connection", (socket) => {
       
       io.emit("notification", {
         type: "status",
-        message: `Driver ${driverId} is online`,
+        message: `${driver.name} (#${driver.driverId}) is online`,
         time: new Date(),
       });
     } catch (err) {
@@ -105,13 +107,15 @@ socket.on("driver-idle", async (driverId) => {
       { new: true }
     );
 
+    if (!driver) return;
+
     io.emit("driver-status-changed", {
       driverId,
       status: "idle",
     });
 
     io.emit("notification", {
-      message: `${driver.name} is now idle`,
+      message: `${driver.name} (#${driver.driverId}) is now idle`,
     });
 
   } catch (err) {
@@ -122,6 +126,37 @@ socket.on("driver-idle", async (driverId) => {
   /* =========================================
      🔴 DRIVER OFFLINE
   ========================================= */
+
+  socket.on("driver-offline", async (driverId) => {
+    try {
+      console.log("🔴 Explicit driver offline:", driverId);
+
+      const driver = await Driver.findByIdAndUpdate(
+        driverId,
+        {
+          status: "offline",
+          socketId: null,
+          lastSeen: new Date(),
+        },
+        { new: true }
+      );
+
+      if (!driver) return;
+
+      socket.driverId = null;
+
+      io.emit("driver-status-changed", {
+        driverId,
+        status: "offline",
+      });
+
+      io.emit("notification", {
+        message: `${driver.name} (#${driver.driverId}) is now offline`,
+      });
+    } catch (err) {
+      console.error("Offline status error:", err.message);
+    }
+  });
 
 socket.on("disconnect", async () => {
   try {
@@ -145,11 +180,13 @@ socket.on("disconnect", async () => {
     }
 
     // truly offline
-    await Driver.findByIdAndUpdate(socket.driverId, {
+    const driver = await Driver.findByIdAndUpdate(socket.driverId, {
       status: "offline",
       socketId: null,
       lastSeen: new Date(),
     });
+
+    if (!driver) return;
 
     io.emit("driver-status-changed", {
       driverId: socket.driverId,
@@ -157,7 +194,7 @@ socket.on("disconnect", async () => {
     });
 
     io.emit("notification", {
-      message: `Driver ${socket.driverId} is offline`,
+      message: `${driver.name} (#${driver.driverId}) is offline`,
     });
 
     console.log("🔴 Driver offline:", socket.driverId);

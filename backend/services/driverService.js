@@ -18,7 +18,7 @@ exports.getDriversService = async (query, page, sort, userId) => {
   }
 
   const pageNum = parseInt(page) || 1;
-  const limitNum = 3;
+  const limitNum = parseInt(query.limit) || 10;
   const skip = (pageNum - 1) * limitNum;
 
   let sortOption = { createdAt: -1 };

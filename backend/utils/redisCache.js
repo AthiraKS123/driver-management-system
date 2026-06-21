@@ -12,10 +12,15 @@ const getCache = async (key) => {
 };
 
 const deleteDriverCache = async (userId) => {
-  const keys = await client.keys(`drivers:${userId}:*`);
+  if (!client.isOpen) return;
+  try {
+    const keys = await client.keys(`drivers:${userId}:*`);
 
-  if (keys.length > 0) {
-    await client.del(keys);
+    if (keys.length > 0) {
+      await client.del(keys);
+    }
+  } catch (err) {
+    console.error("Cache delete error:", err.message);
   }
 };
 
