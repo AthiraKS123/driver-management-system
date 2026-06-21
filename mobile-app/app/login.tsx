@@ -3,6 +3,7 @@ import { useState } from "react";
 import { router } from "expo-router";
 import axios from "axios";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { API_URL } from "../constants/api";
 
 export default function Login() {
   const [email, setEmail] = useState("");
@@ -10,7 +11,7 @@ export default function Login() {
 const handleLogin = async () => {
   try {
     const response = await axios.post(
-      "http://192.168.1.4:5000/api/auth/login",
+      `${API_URL}/auth/login`,
       { email, password }
     );
 
@@ -66,11 +67,19 @@ const handleLogin = async () => {
         }}
       />
       <TextInput
-  placeholder="Password"
-  value={password}
-  onChangeText={setPassword}
-  secureTextEntry
-/>
+        placeholder="Password"
+        value={password}
+        onChangeText={setPassword}
+        secureTextEntry
+        style={{
+          backgroundColor: "white",
+          padding: 15,
+          borderRadius: 10,
+          borderWidth: 1,
+          borderColor: "#ddd",
+          marginBottom: 20,
+        }}
+      />
 
       {/* Button */}
       <TouchableOpacity

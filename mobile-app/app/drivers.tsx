@@ -2,8 +2,13 @@ import { useState, useEffect, useRef } from "react";
 import { FlatList, View, Text, ActivityIndicator } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import axios from "axios";
+import { API_URL } from "../constants/api";
+import { useRouter } from "expo-router";
+import { useSocket } from "../context/SocketContext";
 
 export default function Drivers() {
+  const { socket } = useSocket();
+  const router = useRouter();
   const [drivers, setDrivers] = useState<any[]>([]);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(0);
@@ -18,7 +23,7 @@ export default function Drivers() {
       const token = await AsyncStorage.getItem("accessToken");
 
       const response = await axios.get(
-        `http://192.168.1.4:5000/api/drivers?page=${currentPage}`,
+        `${API_URL}/drivers?page=${currentPage}`,
         {
           headers: {
             Authorization: `Bearer ${token}`,
@@ -39,8 +44,12 @@ export default function Drivers() {
       console.log(">>> Fetching page:", currentPage, "| totalPages:", totalPages);
 console.log(">>> Drivers received:", newDrivers.length);
       canLoadMore.current = true;
-    } catch (error) {
+    } catch (error: any) {
       console.log("Fetch Drivers Error:", error);
+      if (error.response?.status === 401) {
+        await AsyncStorage.removeItem("accessToken");
+        router.replace("/login");
+      }
       canLoadMore.current = true;
     } finally {
       setLoading(false);
@@ -51,6 +60,26 @@ console.log(">>> Drivers received:", newDrivers.length);
     fetchDrivers(page);
   }, [page]);
 
+  useEffect(() => {
+    if (!socket) return;
+
+    const handleStatusChange = (data: { driverId: string; status: string }) => {
+      setDrivers((prevDrivers) =>
+        prevDrivers.map((driver) =>
+          driver._id === data.driverId
+            ? { ...driver, status: data.status }
+            : driver
+        )
+      );
+    };
+
+    socket.on("driver-status-changed", handleStatusChange);
+
+    return () => {
+      socket.off("driver-status-changed", handleStatusChange);
+    };
+  }, [socket]);
+
   const loadMore = () => {
     if (!canLoadMore.current || loading || page >= totalPages) return;
     canLoadMore.current = false;
@@ -59,21 +88,30 @@ console.log(">>> Drivers received:", newDrivers.length);
     setPage((prev) => prev + 1);
   };
 
-  const renderDriver = ({ item }: any) => (
-    <View
-      style={{
-        backgroundColor: "#fff",
-        padding: 15,
-        borderRadius: 12,
-        marginBottom: 10,
-      }}
-    >
-      <Text style={{ fontSize: 18, fontWeight: "bold" }}>{item.name}</Text>
-      <Text>📍 {item.city}</Text>
-      <Text>📞 {item.phone}</Text>
-      <Text>🟢 Status: {item.status}</Text>
-    </View>
-  );
+  const renderDriver = ({ item }: any) => {
+    const statusColor =
+      item.status === "online"
+        ? "🟢"
+        : item.status === "idle"
+        ? "🟡"
+        : "🔴";
+
+    return (
+      <View
+        style={{
+          backgroundColor: "#fff",
+          padding: 15,
+          borderRadius: 12,
+          marginBottom: 10,
+        }}
+      >
+        <Text style={{ fontSize: 18, fontWeight: "bold" }}>{item.name}</Text>
+        <Text>📍 {item.city}</Text>
+        <Text>📞 {item.phone}</Text>
+        <Text>{statusColor} Status: {item.status}</Text>
+      </View>
+    );
+  };
 
   return (
     <FlatList
