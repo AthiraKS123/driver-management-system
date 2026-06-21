@@ -39,4 +39,3 @@ export const restoreDriver = (id) =>
 
 export const permanentDelete = (id) =>
   API.delete(`/drivers/permanent/${id}`);
-
