@@ -11,10 +11,13 @@ import AddDriver from "./AddDriver";
 import { useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
 import { useSocket } from "../context/SocketContext";
+import LiveMap from "./LiveMap";
+import ChatPanel from "./ChatPanel";
 
 const Drivers = () => {
   const { socket, isConnected } = useSocket();
   const [drivers, setDrivers] = useState([]);
+  const [viewMode, setViewMode] = useState("list"); // 'list' | 'map'
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
   const [city, setCity] = useState("");
@@ -22,6 +25,7 @@ const Drivers = () => {
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [editImage, setEditImage] = useState(null);
   const [editPreview, setEditPreview] = useState(null);
+  const [selectedChatDriver, setSelectedChatDriver] = useState(null);
 
   const [showAddModal, setShowAddModal] = useState(false);
   const [showFilterModal, setShowFilterModal] = useState(false);
@@ -89,12 +93,21 @@ const Drivers = () => {
       );
     };
 
+    const handleLocationUpdate = ({ driverId, lat, lng }) => {
+      setDrivers((prev) =>
+        prev.map((driver) =>
+          driver._id === driverId ? { ...driver, currentLocation: { lat, lng } } : driver
+        )
+      );
+    };
+
     socket.on("notification", handleNotification);
     socket.on("driver-added", handleAdd);
     socket.on("driver-deleted", handleDelete);
     socket.on("driver-updated", handleUpdate);
     socket.on("driver-restored", handleRestore);
     socket.on("driver-status-changed", handleStatus);
+    socket.on("location-updated", handleLocationUpdate);
 
     return () => {
       socket.off("notification", handleNotification);
@@ -103,6 +116,7 @@ const Drivers = () => {
       socket.off("driver-updated", handleUpdate);
       socket.off("driver-restored", handleRestore);
       socket.off("driver-status-changed", handleStatus);
+      socket.off("location-updated", handleLocationUpdate);
     };
   }, [socket, isConnected, page]);
 
@@ -326,6 +340,21 @@ const Drivers = () => {
             Add Driver
           </button>
           
+          <div className="flex bg-slate-800 rounded-xl p-1 border border-slate-700">
+            <button
+              onClick={() => setViewMode("list")}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${viewMode === "list" ? "bg-slate-700 text-white shadow-sm" : "text-slate-400 hover:text-white"}`}
+            >
+              List
+            </button>
+            <button
+              onClick={() => setViewMode("map")}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${viewMode === "map" ? "bg-slate-700 text-white shadow-sm" : "text-slate-400 hover:text-white"}`}
+            >
+              Map
+            </button>
+          </div>
+          
           <div className="relative group flex-grow max-w-xs">
             <select
               value={sort}
@@ -381,124 +410,131 @@ const Drivers = () => {
           </div>
         )}
 
-        {/* 📦 Driver Grid */}
+        {/* 📦 Driver Grid or Map */}
         {!loading && !error && (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {drivers.map((d) => (
-              <div
-                key={d._id}
-                className="glass-dark p-6 rounded-3xl hover:-translate-y-1 hover:shadow-[0_10px_40px_-10px_rgba(99,102,241,0.2)] hover:border-indigo-500/30 transition-all duration-300 group flex flex-col"
-              >
-                {editingId === d._id ? (
-                  <div className="flex flex-col h-full space-y-3">
-                    <input
-                      value={editData.name}
-                      onChange={(e) => setEditData({ ...editData, name: e.target.value })}
-                      className="w-full bg-slate-800 text-white p-3 rounded-xl border border-slate-700 focus:outline-none focus:border-indigo-500"
-                      placeholder="Name"
-                    />
-                    <input
-                      value={editData.city}
-                      onChange={(e) => setEditData({ ...editData, city: e.target.value })}
-                      className="w-full bg-slate-800 text-white p-3 rounded-xl border border-slate-700 focus:outline-none focus:border-indigo-500"
-                      placeholder="City"
-                    />
-                    <input
-                      value={editData.phone}
-                      onChange={(e) => setEditData({ ...editData, phone: e.target.value })}
-                      className="w-full bg-slate-800 text-white p-3 rounded-xl border border-slate-700 focus:outline-none focus:border-indigo-500"
-                      placeholder="Phone"
-                    />
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={(e) => {
-                        const file = e.target.files[0];
-                        setEditImage(file);
-                        if (file) setEditPreview(URL.createObjectURL(file));
-                      }}
-                      className="w-full text-sm text-slate-400 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-indigo-500/10 file:text-indigo-400 hover:file:bg-indigo-500/20"
-                    />
-                    {editPreview && (
-                      <img src={editPreview} alt="preview" className="w-16 h-16 rounded-2xl object-cover" />
-                    )}
-                    <div className="flex gap-2 mt-auto pt-4">
-                      <button onClick={() => submitUpdate(d._id)} className="flex-1 bg-green-500/20 hover:bg-green-500/30 text-green-400 border border-green-500/30 py-2 rounded-xl transition-colors">
-                        Save
-                      </button>
-                      <button onClick={() => setEditingId(null)} className="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 py-2 rounded-xl transition-colors">
-                        Cancel
-                      </button>
+          viewMode === "map" ? (
+            <LiveMap drivers={drivers} />
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {drivers.map((d) => (
+                <div
+                  key={d._id}
+                  className="glass-dark p-6 rounded-3xl hover:-translate-y-1 hover:shadow-[0_10px_40px_-10px_rgba(99,102,241,0.2)] hover:border-indigo-500/30 transition-all duration-300 group flex flex-col"
+                >
+                  {editingId === d._id ? (
+                    <div className="flex flex-col h-full space-y-3">
+                      <input
+                        value={editData.name}
+                        onChange={(e) => setEditData({ ...editData, name: e.target.value })}
+                        className="w-full bg-slate-800 text-white p-3 rounded-xl border border-slate-700 focus:outline-none focus:border-indigo-500"
+                        placeholder="Name"
+                      />
+                      <input
+                        value={editData.city}
+                        onChange={(e) => setEditData({ ...editData, city: e.target.value })}
+                        className="w-full bg-slate-800 text-white p-3 rounded-xl border border-slate-700 focus:outline-none focus:border-indigo-500"
+                        placeholder="City"
+                      />
+                      <input
+                        value={editData.phone}
+                        onChange={(e) => setEditData({ ...editData, phone: e.target.value })}
+                        className="w-full bg-slate-800 text-white p-3 rounded-xl border border-slate-700 focus:outline-none focus:border-indigo-500"
+                        placeholder="Phone"
+                      />
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={(e) => {
+                          const file = e.target.files[0];
+                          setEditImage(file);
+                          if (file) setEditPreview(URL.createObjectURL(file));
+                        }}
+                        className="w-full text-sm text-slate-400 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-indigo-500/10 file:text-indigo-400 hover:file:bg-indigo-500/20"
+                      />
+                      {editPreview && (
+                        <img src={editPreview} alt="preview" className="w-16 h-16 rounded-2xl object-cover" />
+                      )}
+                      <div className="flex gap-2 mt-auto pt-4">
+                        <button onClick={() => submitUpdate(d._id)} className="flex-1 bg-green-500/20 hover:bg-green-500/30 text-green-400 border border-green-500/30 py-2 rounded-xl transition-colors">
+                          Save
+                        </button>
+                        <button onClick={() => setEditingId(null)} className="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 py-2 rounded-xl transition-colors">
+                          Cancel
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                ) : (
-                  <>
-                    <div className="flex justify-between items-start mb-4">
-                      <div className="relative">
-                        {d.profileImage ? (
-                          <img src={d.profileImage} alt="driver" className="w-16 h-16 object-cover rounded-2xl border-2 border-slate-700 group-hover:border-indigo-500/50 transition-colors" />
-                        ) : (
-                          <div className="w-16 h-16 bg-slate-800 rounded-2xl flex items-center justify-center border-2 border-slate-700">
-                            <span className="text-xl font-display text-slate-500">{d.name.charAt(0).toUpperCase()}</span>
+                  ) : (
+                    <>
+                      <div className="flex justify-between items-start mb-4">
+                        <div className="relative">
+                          {d.profileImage ? (
+                            <img src={d.profileImage} alt="driver" className="w-16 h-16 object-cover rounded-2xl border-2 border-slate-700 group-hover:border-indigo-500/50 transition-colors" />
+                          ) : (
+                            <div className="w-16 h-16 bg-slate-800 rounded-2xl flex items-center justify-center border-2 border-slate-700">
+                              <span className="text-xl font-display text-slate-500">{d.name.charAt(0).toUpperCase()}</span>
+                            </div>
+                          )}
+                          
+                          {/* Dynamic Status Dot */}
+                          <div className="absolute -bottom-1 -right-1 bg-slate-900 p-1 rounded-full">
+                            <div className={`w-3.5 h-3.5 rounded-full shadow-sm
+                              ${d.status === "online" ? "bg-green-500 shadow-[0_0_10px_rgba(34,197,94,0.6)]" : 
+                                d.status === "idle" ? "bg-amber-500 shadow-[0_0_10px_rgba(245,158,11,0.6)]" : 
+                                "bg-slate-500"}
+                            `}></div>
                           </div>
-                        )}
-                        
-                        {/* Dynamic Status Dot */}
-                        <div className="absolute -bottom-1 -right-1 bg-slate-900 p-1 rounded-full">
-                          <div className={`w-3.5 h-3.5 rounded-full shadow-sm
-                            ${d.status === "online" ? "bg-green-500 shadow-[0_0_10px_rgba(34,197,94,0.6)]" : 
-                              d.status === "idle" ? "bg-amber-500 shadow-[0_0_10px_rgba(245,158,11,0.6)]" : 
-                              "bg-slate-500"}
-                          `}></div>
+                        </div>
+
+                        <div className="bg-slate-800/50 px-3 py-1 rounded-full border border-slate-700/50">
+                          <p className="text-sm font-display font-medium text-slate-400">#{d.driverId}</p>
                         </div>
                       </div>
 
-                      <div className="bg-slate-800/50 px-3 py-1 rounded-full border border-slate-700/50">
-                        <p className="text-sm font-display font-medium text-slate-400">#{d.driverId}</p>
+                      <div className="mb-4">
+                        <h3 className="text-xl font-display font-bold text-white mb-1">{d.name}</h3>
+                        <div className="flex flex-col gap-1 text-sm text-slate-400">
+                          <span className="flex items-center gap-1.5">
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clipRule="evenodd" /></svg>
+                            <span className="capitalize">{d.city}</span>
+                          </span>
+                          <span className="flex items-center gap-1.5">
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path d="M2 3a1 1 0 011-1h2.153a1 1 0 01.986.836l.74 4.435a1 1 0 01-.54 1.06l-1.548.773a11.037 11.037 0 006.105 6.105l.774-1.548a1 1 0 011.059-.54l4.435.74a1 1 0 01.836.986V17a1 1 0 01-1 1h-2C7.82 18 2 12.18 2 5V3z" /></svg>
+                            {d.phone}
+                          </span>
+                        </div>
                       </div>
-                    </div>
 
-                    <div className="mb-4">
-                      <h3 className="text-xl font-display font-bold text-white mb-1">{d.name}</h3>
-                      <div className="flex flex-col gap-1 text-sm text-slate-400">
-                        <span className="flex items-center gap-1.5">
-                          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clipRule="evenodd" /></svg>
-                          <span className="capitalize">{d.city}</span>
+                      {/* Status Text Badge */}
+                      <div className="mt-auto pt-4 border-t border-slate-800/50 flex justify-between items-center">
+                        <span className={`text-xs font-bold uppercase tracking-wider px-2 py-1 rounded-md
+                          ${d.status === "online" ? "text-green-400 bg-green-500/10" : 
+                            d.status === "idle" ? "text-amber-400 bg-amber-500/10" : 
+                            "text-slate-400 bg-slate-800"}
+                        `}>
+                          {d.status || "offline"}
                         </span>
-                        <span className="flex items-center gap-1.5">
-                          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path d="M2 3a1 1 0 011-1h2.153a1 1 0 01.986.836l.74 4.435a1 1 0 01-.54 1.06l-1.548.773a11.037 11.037 0 006.105 6.105l.774-1.548a1 1 0 011.059-.54l4.435.74a1 1 0 01.836.986V17a1 1 0 01-1 1h-2C7.82 18 2 12.18 2 5V3z" /></svg>
-                          {d.phone}
-                        </span>
-                      </div>
-                    </div>
 
-                    {/* Status Text Badge */}
-                    <div className="mt-auto pt-4 border-t border-slate-800/50 flex justify-between items-center">
-                      <span className={`text-xs font-bold uppercase tracking-wider px-2 py-1 rounded-md
-                        ${d.status === "online" ? "text-green-400 bg-green-500/10" : 
-                          d.status === "idle" ? "text-amber-400 bg-amber-500/10" : 
-                          "text-slate-400 bg-slate-800"}
-                      `}>
-                        {d.status || "offline"}
-                      </span>
-
-                      <div className="flex gap-2">
-                        <button onClick={() => startEdit(d)} className="p-2 text-slate-400 hover:text-amber-400 hover:bg-amber-400/10 rounded-xl transition-colors" title="Edit">
-                          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" /></svg>
-                        </button>
-                        <button onClick={() => navigate(`/drivers/${d._id}`)} className="p-2 text-slate-400 hover:text-blue-400 hover:bg-blue-400/10 rounded-xl transition-colors" title="View Profile">
-                          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M10 12a2 2 0 100-4 2 2 0 000 4z" /><path fillRule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clipRule="evenodd" /></svg>
-                        </button>
-                        <button onClick={() => handleDelete(d._id)} className="p-2 text-slate-400 hover:text-red-400 hover:bg-red-400/10 rounded-xl transition-colors" title="Delete">
-                          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" /></svg>
-                        </button>
+                        <div className="flex gap-2">
+                          <button onClick={() => setSelectedChatDriver(d)} className="p-2 text-slate-400 hover:text-indigo-400 hover:bg-indigo-400/10 rounded-xl transition-colors" title="Chat">
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M18 10c0 3.866-3.582 7-8 7a8.841 8.841 0 01-4.083-.98L2 17l1.338-3.123C2.493 12.767 2 11.434 2 10c0-3.866 3.582-7 8-7s8 3.134 8 7zM7 9H5v2h2V9zm8 0h-2v2h2V9zM9 9h2v2H9V9z" clipRule="evenodd" /></svg>
+                          </button>
+                          <button onClick={() => startEdit(d)} className="p-2 text-slate-400 hover:text-amber-400 hover:bg-amber-400/10 rounded-xl transition-colors" title="Edit">
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" /></svg>
+                          </button>
+                          <button onClick={() => navigate(`/drivers/${d._id}`)} className="p-2 text-slate-400 hover:text-blue-400 hover:bg-blue-400/10 rounded-xl transition-colors" title="View Profile">
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M10 12a2 2 0 100-4 2 2 0 000 4z" /><path fillRule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clipRule="evenodd" /></svg>
+                          </button>
+                          <button onClick={() => handleDelete(d._id)} className="p-2 text-slate-400 hover:text-red-400 hover:bg-red-400/10 rounded-xl transition-colors" title="Delete">
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" /></svg>
+                          </button>
+                        </div>
                       </div>
-                    </div>
-                  </>
-                )}
-              </div>
-            ))}
-          </div>
+                    </>
+                  )}
+                </div>
+              ))}
+            </div>
+          )
         )}
 
         {/* ❌ Empty */}
@@ -563,7 +599,6 @@ const Drivers = () => {
           </div>
         )}
 
-        {/* 🔍 Filter Modal */}
         {showFilterModal && (
           <div className="fixed inset-0 z-50 flex justify-center items-center p-4">
             <div className="absolute inset-0 bg-slate-950/80 backdrop-blur-md" onClick={() => setShowFilterModal(false)}></div>
@@ -616,6 +651,16 @@ const Drivers = () => {
               </div>
             </div>
           </div>
+        )}
+
+        {/* 💬 Chat Panel */}
+        {selectedChatDriver && (
+          <ChatPanel
+            driver={selectedChatDriver}
+            socket={socket}
+            token={localStorage.getItem("accessToken")}
+            onClose={() => setSelectedChatDriver(null)}
+          />
         )}
       </div>
     </div>

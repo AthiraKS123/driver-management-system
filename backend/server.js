@@ -27,6 +27,9 @@ connectDB();
 const driverRoutes = require("./routes/drivers");
 app.use("/api/drivers", driverRoutes);
 
+const chatRoutes = require("./routes/chat");
+app.use("/api/chat", chatRoutes);
+
 const authRoutes = require("./routes/authRoutes");
 app.use("/api/auth", authRoutes);
 
@@ -155,6 +158,51 @@ socket.on("driver-idle", async (driverId) => {
       });
     } catch (err) {
       console.error("Offline status error:", err.message);
+    }
+  });
+
+  /* =========================================
+     💬 LIVE CHAT
+  ========================================= */
+
+  socket.on("send-message", async (data) => {
+    try {
+      const { driverId, senderRole, text } = data;
+      console.log(`💬 New message from ${senderRole} to driver ${driverId}: ${text}`);
+      
+      const Message = require("./models/Message");
+      const message = new Message({
+        driver: driverId,
+        senderRole,
+        text,
+      });
+      await message.save();
+
+      // Emit to all clients so the recipient (admin or driver) gets it instantly
+      io.emit("receive-message", message);
+    } catch (err) {
+      console.error("Chat error:", err.message);
+    }
+  });
+
+  /* =========================================
+     📍 DRIVER LOCATION UPDATE
+  ========================================= */
+
+  socket.on("driver-location-update", async (data) => {
+    try {
+      const { driverId, lat, lng } = data;
+      console.log(`📍 Received location update for ${driverId}: ${lat}, ${lng}`);
+      
+      // Emit to all clients (admin panel)
+      io.emit("location-updated", { driverId, lat, lng });
+
+      // Update database
+      await Driver.findByIdAndUpdate(driverId, {
+        currentLocation: { lat, lng }
+      });
+    } catch (err) {
+      console.error("Location update error:", err.message);
     }
   });
 
